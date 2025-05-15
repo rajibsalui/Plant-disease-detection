@@ -1,42 +1,88 @@
 import streamlit as st
 import tensorflow as tf
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
+#from tf.keras.models import load_model
+#from tensorflow.keras.preprocessing import image
 import numpy as np
 import os
 import io
 from PIL import Image
 import requests
-import json
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import base64
 from io import BytesIO
 import threading
 import time
-import random
+import google.generativeai as genai
+import dotenv
 
 # Load the model
-model = load_model("PDDS.keras")
+model = tf.keras.models.load_model("PDDS.keras")
 
 # Load class names
 if os.path.exists("class_names.txt"):
     with open("class_names.txt", "r") as f:
         class_names = [line.strip() for line in f.readlines()]
 else:
-    class_names = [
-        "Apple___Black_rot",
-        "Apple___Scab",
-        "Apple___healthy",
-        "Corn___Cercospora_leaf_spot Gray_leaf_spot",
-        "Corn___Common_rust",
-        "Corn___healthy",
-        "Grape___Black_rot",
-        "Grape___Esca_(Black_Measles)",
-        "Grape___healthy",
-        "Tomato___Early_blight"
-    ]
+    print("Error: class_names.txt file not found.")
+
+# Load Gemini API key from .env file
+dotenv.load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+
+if not GEMINI_API_KEY:
+    print("Error: GEMINI_API_KEY not found in .env file.")
+    raise ValueError("GEMINI_API_KEY is required for Gemini API configuration.")
+
+# Configure Gemini API
+genai.configure(api_key=GEMINI_API_KEY)
+
+def get_gemini_recommendation(predicted_class, confidence):
+    """
+    Call Gemini API to get recommendations for the predicted disease.
+    """
+    prompt = f"""
+    I have a plant leaf image that was classified as '{predicted_class.replace('___', ' - ')}' with a confidence of {confidence:.2f}%. 
+    Please provide actionable, expert-level recommendations for what to do next, including treatment, prevention, and care tips. If the plant is healthy, provide tips to keep it healthy. Respond in markdown format.
+    """
+    
+    try:
+        # Use the correct model name for the current Gemini API version
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17')
+        
+        # Generate content with safety settings
+        generation_config = {
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "top_k": 40
+        }
+        
+        response = model.generate_content(
+            prompt,
+            generation_config=generation_config
+        )
+        
+        # Return the generated text or a fallback message if empty
+        if hasattr(response, 'text') and response.text:
+            return response.text
+        else:
+            return "Sorry, I couldn't generate recommendations at this moment. Please try again."
+            
+    except Exception as e:
+        # Provide a fallback response if the API call fails
+        print(f"Gemini API Error: {str(e)}")
+        return """
+## Plant Care Recommendations
+
+### General Care Tips
+- Remove any visibly damaged or infected leaves
+- Ensure proper watering (check soil moisture before watering)
+- Provide adequate sunlight based on plant type
+- Consider applying appropriate treatment based on the detected condition
+
+*For detailed recommendations, please try again later when the AI service is available.*
+"""
 
 # Create FastAPI app
 app = FastAPI(title="Plant Disease Detection API")
@@ -53,7 +99,7 @@ app.add_middleware(
 # Preprocess image function
 def preprocess_image(img):
     img = img.resize((224, 224))
-    img_array = image.img_to_array(img)
+    img_array = tf.keras.preprocessing.image.img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
     img_array = img_array / 255.0
     return img_array
@@ -202,166 +248,44 @@ def streamlit_app():
                             # Display progress bar for confidence
                             st.progress(confidence/100)
 
-                            # Display recommendations based on disease
-                            st.markdown("<h4>Recommendations:</h4>", unsafe_allow_html=True)
-
-                            if "healthy" in predicted_class:
-                                st.success("Your plant appears to be healthy! Continue with regular care.")
-                            else:
-                                # Display disease-specific recommendations
-                                if "Black_rot" in predicted_class:
-                                    st.error("Black rot detected! Remove infected leaves and apply fungicide.")
-                                    st.markdown("• Remove infected plant parts")
-                                    st.markdown("• Apply copper-based fungicides")
-                                    st.markdown("• Ensure good air circulation")
-                                elif "Scab" in predicted_class:
-                                    st.error("Scab detected! Apply fungicide and improve air circulation.")
-                                    st.markdown("• Apply sulfur or copper-based fungicides")
-                                    st.markdown("• Prune to improve air circulation")
-                                    st.markdown("• Remove fallen leaves to reduce infection")
-                                elif "Cercospora" in predicted_class or "Gray_leaf_spot" in predicted_class:
-                                    st.error("Cercospora leaf spot detected! Apply fungicide and rotate crops.")
-                                    st.markdown("• Apply fungicide treatments")
-                                    st.markdown("• Practice crop rotation")
-                                    st.markdown("• Improve air circulation")
-                                elif "Common_rust" in predicted_class:
-                                    st.error("Common rust detected! Apply fungicide and improve drainage.")
-                                    st.markdown("• Apply fungicide treatments")
-                                    st.markdown("• Improve soil drainage")
-                                    st.markdown("• Remove infected plants")
-                                elif "Esca" in predicted_class or "Black_Measles" in predicted_class:
-                                    st.error("Esca (Black Measles) detected! Remove infected vines.")
-                                    st.markdown("• Remove severely infected vines")
-                                    st.markdown("• Apply fungicide preventatively")
-                                    st.markdown("• Ensure proper pruning techniques")
-                                elif "Early_blight" in predicted_class:
-                                    st.error("Early blight detected! Remove infected leaves and apply fungicide.")
-                                    st.markdown("• Remove infected leaves")
-                                    st.markdown("• Apply fungicide treatments")
-                                    st.markdown("• Mulch around plants")
-                                else:
-                                    st.error(f"Disease detected: {predicted_class}")
-                                    st.markdown("• Consult with a plant pathologist")
-                                    st.markdown("• Remove infected plant parts")
-                                    st.markdown("• Consider appropriate fungicide treatments")
+                          
 
                             # Gemini AI Suggestions Section
                             st.markdown("""
-                            <div class="gemini-container">
-                                <div class="gemini-header">
-                                    <img src="https://storage.googleapis.com/gweb-uniblog-publish-prod/images/gemini_advanced_logo.max-1000x1000.png" class="gemini-logo">
-                                    <div class="gemini-title">Gemini AI Advanced Analysis</div>
+                            <div class="gemini-container" style="background: linear-gradient(to right, #f8f9fa, #e9f7ef); border-radius: 12px; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); border-left: 4px solid #34A853; margin-top: 25px;">
+                                <div class="gemini-header" style="display: flex; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px;">
+                                    <img src="https://storage.googleapis.com/gweb-uniblog-publish-prod/images/gemini_advanced_logo.max-1000x1000.png" style="width: 32px; height: 32px; margin-right: 12px;">
+                                    <div style="color: #1E3A8A; font-size: 20px; font-weight: 600;">Gemini AI Insights</div>
                                 </div>
                             """, unsafe_allow_html=True)
 
-                            # Create a container with a different style for Gemini suggestions
+                            # Create a container for Gemini insights
                             gemini_container = st.container()
                             with gemini_container:
                                 # Add a loading spinner for Gemini
                                 with st.spinner("Gemini AI is analyzing your plant..."):
-                                    # Simulate Gemini AI thinking (for demonstration)
-                                    time.sleep(1.5)
+                                    # Call Gemini API for recommendations
+                                    gemini_recommendation = get_gemini_recommendation(predicted_class, confidence)
+                                    
+                                    # Add a quality indicator based on confidence
+                                    quality_color = "#34A853" if confidence > 85 else "#FBBC05" if confidence > 70 else "#EA4335"
+                                    quality_label = "High Confidence" if confidence > 85 else "Moderate Confidence" if confidence > 70 else "Low Confidence"
+                                    
+                                    st.markdown(f"""
+                                    <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                                        <span style="background-color: {quality_color}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">
+                                            {quality_label}
+                                        </span>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    # Display the Gemini recommendations in a styled container
+                                    st.markdown(f"""
+                                    <div style="background-color: white; border-radius: 8px; padding: 15px; box-shadow: inset 0 0 5px rgba(0,0,0,0.05);">
+                                        {gemini_recommendation}
+                                    </div>
+                                    """, unsafe_allow_html=True)
 
-                                    # Generate Gemini AI suggestions based on the detected disease
-                                    if "healthy" in predicted_class:
-                                        plant_type = predicted_class.split("___")[0]
-                                        st.success(f"Your {plant_type} plant looks healthy! Here are some tips to keep it thriving:")
-
-                                        # Healthy plant suggestions
-                                        gemini_tips = [
-                                            f"**Optimal Watering Schedule**: {plant_type} plants typically need watering when the top inch of soil feels dry. Consider setting up a consistent watering schedule.",
-                                            f"**Nutrient Management**: Apply a balanced fertilizer every 4-6 weeks during the growing season to maintain plant health.",
-                                            f"**Preventative Care**: Regular inspection for early signs of pests or disease can prevent future problems.",
-                                            f"**Pruning Guidance**: Removing dead or yellowing leaves will promote new growth and maintain plant vigor.",
-                                            f"**Companion Planting**: Consider planting beneficial companion plants nearby to naturally deter pests."
-                                        ]
-
-                                        # Display 3 random tips
-                                        selected_tips = random.sample(gemini_tips, 3)
-                                        for tip in selected_tips:
-                                            st.markdown(tip)
-                                    else:
-                                        # Disease-specific Gemini AI suggestions
-                                        st.warning("Based on my analysis, here are some advanced insights and treatment options:")
-
-                                        if "Black_rot" in predicted_class:
-                                            plant_type = predicted_class.split("___")[0]
-                                            st.markdown(f"**Disease Progression Analysis**: The black rot infection on your {plant_type} appears to be in the " +
-                                                      random.choice(["early", "moderate", "advanced"]) + " stage. This fungal disease thrives in warm, humid conditions.")
-
-                                            st.markdown("**Environmental Factors**: Recent weather patterns in your region may have contributed to this outbreak. Consider adjusting your watering schedule to morning hours only.")
-
-                                            st.markdown("**Organic Treatment Options**: Besides copper-based fungicides, consider neem oil applications every 7-10 days. A baking soda solution (1 tbsp per gallon of water with a few drops of dish soap) can also be effective for early infections.")
-
-                                            st.markdown("**Long-term Prevention**: Improve soil drainage and consider applying a thick layer of organic mulch to prevent spore splash. Rotating crops every 3-4 years is essential for breaking the disease cycle.")
-
-                                        elif "Scab" in predicted_class:
-                                            st.markdown("**Infection Analysis**: The scab pattern suggests this infection may have started during the last rainy period. The fungus Venturia inaequalis thrives in cool, wet spring conditions.")
-
-                                            st.markdown("**Biological Controls**: Consider introducing beneficial microorganisms like Bacillus subtilis to your soil, which can help suppress fungal pathogens naturally.")
-
-                                            st.markdown("**Resistant Varieties**: For future plantings, consider resistant varieties like Liberty, Enterprise, or Williams Pride which show good resistance to scab.")
-
-                                            st.markdown("**Pruning Strategy**: Focus on creating an open canopy structure to improve air circulation, which significantly reduces scab pressure.")
-
-                                        elif "Cercospora" in predicted_class or "Gray_leaf_spot" in predicted_class:
-                                            st.markdown("**Infection Pattern**: The Cercospora fungus typically begins on lower leaves and moves upward. Your infection appears to be " +
-                                                      random.choice(["just beginning", "moderately advanced", "quite extensive"]) + ".")
-
-                                            st.markdown("**Weather Correlation**: This disease is strongly correlated with periods of high humidity (>90%) and temperatures between 75-85°F. Consider tracking these conditions to predict future outbreaks.")
-
-                                            st.markdown("**Advanced Treatment**: Alternating fungicides with different modes of action can prevent resistance development. Consider rotating between QoI, DMI, and chlorothalonil-based products.")
-
-                                            st.markdown("**Soil Health**: Improving soil health with compost and beneficial microorganisms can enhance the plant's natural defense mechanisms against this pathogen.")
-
-                                        elif "Common_rust" in predicted_class:
-                                            st.markdown("**Spore Analysis**: Rust spores can travel long distances on wind currents. This infection may have originated from neighboring fields or gardens.")
-
-                                            st.markdown("**Timing-Based Control**: Early application of fungicides is critical - apply at the first sign of infection for best results.")
-
-                                            st.markdown("**Resistant Hybrids**: For future plantings, consider rust-resistant corn hybrids with Rp resistance genes.")
-
-                                            st.markdown("**Microclimate Management**: Adjusting plant spacing to reduce humidity in the canopy can significantly reduce rust pressure.")
-
-                                        elif "Esca" in predicted_class or "Black_Measles" in predicted_class:
-                                            st.markdown("**Disease Complexity**: Esca is actually a complex of several fungi working together. The visible symptoms you're seeing may have been developing internally for 1-2 years.")
-
-                                            st.markdown("**Trunk Renewal**: Consider trunk renewal techniques where severely infected trunks are cut back to allow new, clean growth to develop.")
-
-                                            st.markdown("**Wound Protection**: Apply wound protectants immediately after pruning to prevent new infections through fresh cuts.")
-
-                                            st.markdown("**Biocontrol Options**: Trichoderma-based products applied to pruning wounds have shown promise in preventing new Esca infections.")
-
-                                        elif "Early_blight" in predicted_class:
-                                            st.markdown("**Infection Cycle**: Early blight (Alternaria solani) can complete its life cycle in 5-7 days under optimal conditions, explaining how quickly it can spread.")
-
-                                            st.markdown("**Nutritional Defense**: Calcium and potassium supplements can strengthen cell walls, making plants more resistant to penetration by the fungus.")
-
-                                            st.markdown("**Companion Planting**: Consider planting basil or marigolds nearby, which may help repel some insects that can spread or worsen the infection.")
-
-                                            st.markdown("**Preventative Spraying**: A weekly application of diluted compost tea can introduce beneficial microorganisms that compete with the pathogen.")
-
-                                        else:
-                                            st.markdown("**Pathogen Analysis**: This appears to be a " + random.choice(["fungal", "bacterial", "viral"]) + " infection that affects " +
-                                                      predicted_class.split("___")[0] + " plants.")
-
-                                            st.markdown("**Environmental Factors**: Consider adjusting humidity levels and improving air circulation around your plants.")
-
-                                            st.markdown("**Integrated Management**: A combination of cultural, biological, and chemical controls will likely be most effective for this condition.")
-
-                                            st.markdown("**Soil Testing**: I recommend testing your soil pH and nutrient levels, as imbalances can make plants more susceptible to this type of disease.")
-
-                                # Add a feedback section for Gemini suggestions
-                                st.markdown("<div style='margin-top: 15px; font-size: 14px;'>Was this Gemini AI analysis helpful?</div>", unsafe_allow_html=True)
-                                col1, col2, col3 = st.columns([1, 1, 5])
-                                with col1:
-                                    st.button("👍 Yes", key="gemini_helpful")
-                                with col2:
-                                    st.button("👎 No", key="gemini_not_helpful")
-                                with col3:
-                                    st.text_input("Suggest improvements...", key="gemini_feedback", label_visibility="collapsed")
-
-                            st.markdown("</div></div>", unsafe_allow_html=True)
                     else:
                         st.error("Error in prediction. Please try again.")
 
@@ -400,7 +324,7 @@ def streamlit_app():
             st.markdown("</div>", unsafe_allow_html=True)
 
     # Footer
-    st.markdown("<div class='footer'>Plant Disease Detection System © 2023</div>", unsafe_allow_html=True)
+    st.markdown("<div class='footer'>Plant Disease Detection System © 2025</div>", unsafe_allow_html=True)
 
 # Function to run FastAPI with uvicorn
 def run_fastapi():
