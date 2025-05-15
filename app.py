@@ -44,7 +44,44 @@ def get_gemini_recommendation(predicted_class, confidence):
     """
     prompt = f"""
     I have a plant leaf image that was classified as '{predicted_class.replace('___', ' - ')}' with a confidence of {confidence:.2f}%. 
-    Please provide actionable, expert-level recommendations for what to do next, including treatment, prevention, and care tips. If the plant is healthy, provide tips to keep it healthy. Respond in markdown format.
+    You are an expert agricultural assistant AI. A user will provide the name of a plant disease (e.g., "Powdery Mildew on Tomato", "Late Blight on Potato", "Citrus Canker", etc.). Based on the given disease, provide precise and practical recommendations in exactly 5 bullet points.
+
+Each point must be:
+
+Concise (1–2 sentences maximum)
+
+Actionable (something a farmer or gardener can do)
+
+Avoid overly technical language unless necessary
+
+Include any biological, chemical, or organic solution if applicable
+
+Mention if expert/extension service help is recommended
+
+Input: '{predicted_class.replace('___', ' - ')}'
+Output Format:
+
+Plant Disease: [Disease Name]
+
+Recommendations:
+1. ...
+2. ...
+3. ...
+4. ...
+5. ...
+
+Example Input: Powdery Mildew on Tomato
+
+Example Output:
+
+Plant Disease: Powdery Mildew on Tomato
+
+Recommendations:
+1. Remove and destroy infected leaves to prevent spread.
+2. Improve air circulation by spacing plants appropriately.
+3. Avoid overhead watering; water at the base of the plant.
+4. Apply sulfur-based or potassium bicarbonate fungicide weekly.
+5. Consult local agricultural extension if infection persists.
     """
     
     try:
@@ -132,7 +169,7 @@ async def predict(file: UploadFile = File(...)):
 def streamlit_app():
     # Set page config
     st.set_page_config(
-        page_title="Plant Disease Detection",
+        page_title="AgriConnect",
         page_icon="🌿",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -215,7 +252,7 @@ def streamlit_app():
         if uploaded_file is not None:
             # Display the uploaded image
             img = Image.open(uploaded_file).convert("RGB")
-            st.image(img, caption="Uploaded Image", use_container_width=True)
+            st.image(img, caption="Uploaded Image", use_column_width=True)
 
             # Add a predict button
             if st.button("Predict Disease", key="predict_button", help="Click to predict the disease"):
@@ -254,8 +291,7 @@ def streamlit_app():
                             st.markdown("""
                             <div class="gemini-container" style="background: linear-gradient(to right, #f8f9fa, #e9f7ef); border-radius: 12px; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); border-left: 4px solid #34A853; margin-top: 25px;">
                                 <div class="gemini-header" style="display: flex; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px;">
-                                    <img src="https://storage.googleapis.com/gweb-uniblog-publish-prod/images/gemini_advanced_logo.max-1000x1000.png" style="width: 32px; height: 32px; margin-right: 12px;">
-                                    <div style="color: #1E3A8A; font-size: 20px; font-weight: 600;">Gemini AI Insights</div>
+                                    <div style="color: #1E3A8A; font-size: 20px; font-weight: 600;">AI Recommendations</div>
                                 </div>
                             """, unsafe_allow_html=True)
 
@@ -281,7 +317,7 @@ def streamlit_app():
                                     
                                     # Display the Gemini recommendations in a styled container
                                     st.markdown(f"""
-                                    <div style="background-color: white; border-radius: 8px; padding: 15px; box-shadow: inset 0 0 5px rgba(0,0,0,0.05);">
+                                    <div style="background-color: black; border-radius: 8px; padding: 15px; box-shadow: inset 0 0 5px rgba(0,0,0,0.05);">
                                         {gemini_recommendation}
                                     </div>
                                     """, unsafe_allow_html=True)
