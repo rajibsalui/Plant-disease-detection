@@ -5,7 +5,7 @@ A web application for detecting plant leaf diseases using machine learning. This
 ## Features
 
 - 🌿 Upload leaf images to detect diseases
-- 🔍 AI-powered disease detection
+- 🔍 ML-powered disease detection
 - 📊 Confidence scores for predictions
 - 💡 Treatment recommendations based on detected diseases
 - 🎨 Beautiful and intuitive user interface

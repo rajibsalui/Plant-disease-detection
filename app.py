@@ -245,7 +245,7 @@ def streamlit_app():
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.markdown("<div class='upload-box'>", unsafe_allow_html=True)
+       
         uploaded_file = st.file_uploader("Choose a leaf image...", type=["jpg", "jpeg", "png"])
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -273,7 +273,7 @@ def streamlit_app():
 
                         # Display results in the second column
                         with col2:
-                            st.markdown("<div class='result-box'>", unsafe_allow_html=True)
+                            
                             st.markdown("<h2 style='text-align: center; color: #2E7D32;'>Prediction Results</h2>", unsafe_allow_html=True)
 
                             # Display the prediction
@@ -328,14 +328,14 @@ def streamlit_app():
     # If no image is uploaded, show information in the second column
     if uploaded_file is None:
         with col2:
-            st.markdown("<div class='result-box'>", unsafe_allow_html=True)
+         
             st.markdown("<h2 style='text-align: center; color: #2E7D32;'>How It Works</h2>", unsafe_allow_html=True)
             st.markdown("""
             <ol>
                 <li>Upload a clear image of a plant leaf</li>
-                <li>Our AI model analyzes the image</li>
+                <li>Our ML model analyzes the image</li>
                 <li>Get instant disease detection results</li>
-                <li>Receive treatment recommendations</li>
+                <li>Receive AI treatment recommendations</li>
             </ol>
 
             <h4>Supported Plants:</h4>
